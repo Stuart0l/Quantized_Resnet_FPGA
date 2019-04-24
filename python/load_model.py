@@ -67,7 +67,3 @@ with tf.Session(graph=tf.Graph()) as sess:
     all_weights = [weights,[dense, bias]]
 
     np.save('weights.npy', all_weights)
-
-
-
-    pass
