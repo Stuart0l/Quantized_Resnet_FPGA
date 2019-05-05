@@ -1,4 +1,5 @@
 #include "all_weights_loader.h"
+#include "fpga_quantized_conv.h"
 #include "resnet_model.h"
 #include <string>
 
@@ -156,8 +157,10 @@ Output resnet50(const ClientSession &session, const Scope &scope, const Input &i
     QuantizeV2 init_quant(scope, init_pad.out, Min(scope, init_Resp.output, 0).output,
                           Max(scope, init_Resp.output, 0).output,
                           DT_QUINT8, QuantizeV2::Mode("MIN_FIRST"));
-    QuantizedConv2D init_conv(scope, init_quant.output, filters[0][0][0], init_quant.output_min, init_quant.output_max,
-                              min_filter[0][0][0], max_filter[0][0][0], {1, 2, 2, 1}, "VALID");
+    /*QuantizedConv2D init_conv(scope, init_quant.output, filters[0][0][0], init_quant.output_min, init_quant.output_max,
+                              min_filter[0][0][0], max_filter[0][0][0], {1, 2, 2, 1}, "VALID");*/
+    auto init_conv = FpgaQuantizedConv(session, init_quant.output, filters[0][0][0], init_quant.output_min, init_quant.output_max,
+                      min_filter[0][0][0], max_filter[0][0][0], {1, 2, 2, 1}, string("VALID"));
     RequantizationRange init_req_range(scope, init_conv.output, init_conv.min_output, init_conv.max_output);
     Requantize init_req(scope, init_conv.output, init_conv.min_output, init_conv.max_output,
                         init_req_range.output_min, init_req_range.output_max, DT_QUINT8);
