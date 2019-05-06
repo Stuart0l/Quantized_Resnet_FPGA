@@ -159,12 +159,11 @@ Output resnet50(const ClientSession &session, const Scope &scope, const Input &i
                           DT_QUINT8, QuantizeV2::Mode("MIN_FIRST"));
     /*QuantizedConv2D init_conv(scope, init_quant.output, filters[0][0][0], init_quant.output_min, init_quant.output_max,
                               min_filter[0][0][0], max_filter[0][0][0], {1, 2, 2, 1}, "VALID");*/
-    auto init_conv = FpgaQuantizedConv(session, init_quant.output, filters[0][0][0], init_quant.output_min, init_quant.output_max,
+    auto init_conv = FpgaQuantizedConv(session, Cast(scope, init_quant.output, DT_UINT8), filters[0][0][0], init_quant.output_min, init_quant.output_max,
                       min_filter[0][0][0], max_filter[0][0][0], {1, 2, 2, 1}, string("VALID"));
     RequantizationRange init_req_range(scope, init_conv.output, init_conv.min_output, init_conv.max_output);
     Requantize init_req(scope, init_conv.output, init_conv.min_output, init_conv.max_output,
                         init_req_range.output_min, init_req_range.output_max, DT_QUINT8);
-
     Dequantize init_deq(scope, init_req.output, init_req.output_min, init_req.output_max,
                         Dequantize::Mode("MIN_FIRST"));
     BatchNorm Bn(scope, init_deq.output, param[0][0][0]);

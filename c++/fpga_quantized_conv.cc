@@ -2,19 +2,18 @@
 // Created by stuart on 19-4-25.
 //
 
+#include <tensorflow/cc/ops/standard_ops.h>
 #include "fpga_quantized_conv.h"
 using namespace tensorflow;
 using namespace std;
 
-void ConvFunctor(const quint8* input_data, int input_batches, int input_height, int input_width, int input_depth,
-                 int input_offset, const quint8* filter_data, int filter_height, int filter_width, int filter_count,
-                 int filter_offset, int stride, Padding padding, qint32* output_data, int output_height,
-                 int output_width, int output_shift, int output_offset, int output_mult){
+void ConvFunctor(const uint8* input_data, int input_batches, int input_height, int input_width, int input_depth,
+                 uint8 input_zero_point, const uint8* filter_data, int filter_height, int filter_width, int filter_count,
+                 uint8 filter_zero_point, int stride, Padding padding, qint32* output_data, int output_height,
+                 int output_width){
 
-    const int32 highest = static_cast<int32>(Eigen::NumTraits<qint32>::highest());
-    const int32 lowest = static_cast<int32>(Eigen::NumTraits<qint32>::lowest());
-
-    const int32 rounding = (output_shift < 1) ? 0 : (1 << (output_shift - 1));
+    const auto highest = static_cast<int32>(Eigen::NumTraits<qint32>::highest());
+    const auto lowest = static_cast<int32>(Eigen::NumTraits<qint32>::lowest());
 
     int filter_left_offset;
     int filter_top_offset;
@@ -61,46 +60,41 @@ void ConvFunctor(const quint8* input_data, int input_batches, int input_height, 
                     const int in_x_origin = (out_x * stride) - filter_left_offset;
                     const int in_y_origin = (out_y * stride) - filter_top_offset;
                     int32 total = 0;
+                    int32 sum_input = 0, sum_filter = 0;
                     for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
                         for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                             for (int in_channel = 0; in_channel < input_depth;
                                  ++in_channel) {
                                 const int in_x = in_x_origin + filter_x;
                                 const int in_y = in_y_origin + filter_y;
-                                int32 input_value;
+                                uint8 input_source_value;
                                 // If the location is outside the bounds of the input image,
                                 // use zero as a default value.
                                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                                     (in_y < input_height)) {
-                                    const quint8 input_source_value =
+                                    input_source_value =
                                             input_data[(batch * input_height * input_width *
                                                         input_depth) +
                                                        (in_y * input_width * input_depth) +
                                                        (in_x * input_depth) + in_channel];
-                                    // We're promoting the T1 type to a higher bit depth here as
-                                    // we do the subtraction.
-                                    input_value =
-                                            static_cast<int32>(input_source_value) - input_offset;
                                 } else {
-                                    input_value = 0;
+                                    input_source_value = 0;
                                 }
-                                const quint8 filter_source_value =
+                                const uint8 filter_source_value =
                                         filter_data[(filter_y * filter_width * input_depth *
                                                      filter_count) +
                                                     (filter_x * input_depth * filter_count) +
                                                     (in_channel * filter_count) + out_channel];
-                                // Another promotion to 32 bit, as above.
-                                const int32 filter_value =
-                                        static_cast<int32>(filter_source_value) - filter_offset;
-                                total += (input_value * filter_value);
+                                total += (input_source_value * filter_source_value);
+                                sum_input += input_source_value;
+                                sum_filter += filter_source_value;
                             }
                         }
                     }
                     // Here we're applying scale factors to compress the 32 bit
                     // accumulated total to a potentially lower bit depth.
-                    const int32_t output =
-                            ((((total + output_offset) * output_mult) + rounding) >>
-                                                                                  output_shift);
+                    const int32_t output = total - sum_input * filter_zero_point - sum_filter * input_zero_point +
+                            input_zero_point * filter_zero_point * filter_height * filter_width * input_depth;
                     // We need to saturate the results against the largest and smallest
                     // values that can be represented in this type.
                     const int32 top_clamped_output = std::min(output, highest);
@@ -135,13 +129,10 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
     if(padding == "SAME")
         padding_ = SAME;
 
-    const int32 offset_input =
-            FloatToQuantizedUnclamped<quint8>(0.0f, min_input, max_input);
-    const int32 offset_filter =
-            FloatToQuantizedUnclamped<quint8>(0.0f, min_filter, max_filter);
-    const int32 offset_output = 0;
-    const int32 mult_output = 1;
-    const int32 shift_output = 0;
+    const uint8 offset_input =
+            FloatToQuantizedUnclamped<quint8>(0.0f, min_input, max_input); //zero point
+    const uint8 offset_filter =
+            FloatToQuantizedUnclamped<quint8>(0.0f, min_filter, max_filter); //zero point
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
@@ -184,10 +175,9 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
     Tensor new_tensor(DT_QINT32, out_shape);
     output = std::move(new_tensor);
 
-    ConvFunctor(input.flat<quint8>().data(), batch, input_rows, input_cols, in_depth, offset_input,
-                filter.flat<quint8>().data(), filter_rows, filter_cols, out_depth, offset_filter,
-                stride, padding_, output.flat<qint32>().data(), out_rows, out_cols,
-                shift_output, offset_output, mult_output);
+    ConvFunctor(input.flat<uint8>().data(), batch, input_rows, input_cols, in_depth, offset_input,
+                filter.flat<uint8>().data(), filter_rows, filter_cols, out_depth, offset_filter,
+                stride, padding_, output.flat<qint32>().data(), out_rows, out_cols);
 
     QuantizationRangeForMultiplication<quint8, quint8, qint32>(
             min_input, max_input, min_filter, max_filter, &min_output,
