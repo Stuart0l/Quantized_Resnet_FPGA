@@ -2,8 +2,10 @@
 // Created by stuart on 19-4-25.
 //
 
-#include <tensorflow/cc/ops/standard_ops.h>
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "fpga_quantized_conv.h"
+#include "fpga_conv_kernel.hpp"
+#include <iostream>
 using namespace tensorflow;
 using namespace std;
 
@@ -61,6 +63,7 @@ void ConvFunctor(const uint8* input_data, int input_batches, int input_height, i
                     const int in_y_origin = (out_y * stride) - filter_top_offset;
                     int32 total = 0;
                     int32 sum_input = 0, sum_filter = 0;
+                    int calc_count = 0;
                     for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
                         for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                             for (int in_channel = 0; in_channel < input_depth;
@@ -70,6 +73,11 @@ void ConvFunctor(const uint8* input_data, int input_batches, int input_height, i
                                 uint8 input_source_value;
                                 // If the location is outside the bounds of the input image,
                                 // use zero as a default value.
+                                const uint8 filter_source_value =
+                                        filter_data[(filter_y * filter_width * input_depth *
+                                                     filter_count) +
+                                                    (filter_x * input_depth * filter_count) +
+                                                    (in_channel * filter_count) + out_channel];
                                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                                     (in_y < input_height)) {
                                     input_source_value =
@@ -77,24 +85,17 @@ void ConvFunctor(const uint8* input_data, int input_batches, int input_height, i
                                                         input_depth) +
                                                        (in_y * input_width * input_depth) +
                                                        (in_x * input_depth) + in_channel];
-                                } else {
-                                    input_source_value = 0;
+                                    ++calc_count;
+                                    sum_filter += filter_source_value;
+                                    total += (input_source_value * filter_source_value);
+                                    sum_input += input_source_value;
                                 }
-                                const uint8 filter_source_value =
-                                        filter_data[(filter_y * filter_width * input_depth *
-                                                     filter_count) +
-                                                    (filter_x * input_depth * filter_count) +
-                                                    (in_channel * filter_count) + out_channel];
-                                total += (input_source_value * filter_source_value);
-                                sum_input += input_source_value;
-                                sum_filter += filter_source_value;
                             }
                         }
                     }
-                    // Here we're applying scale factors to compress the 32 bit
-                    // accumulated total to a potentially lower bit depth.
+
                     const int32_t output = total - sum_input * filter_zero_point - sum_filter * input_zero_point +
-                            input_zero_point * filter_zero_point * filter_height * filter_width * input_depth;
+                                           input_zero_point * filter_zero_point * calc_count;
                     // We need to saturate the results against the largest and smallest
                     // values that can be represented in this type.
                     const int32 top_clamped_output = std::min(output, highest);
@@ -113,7 +114,7 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
                                      ::tensorflow::Tensor filter, ::tensorflow::Output input_min,
                                      ::tensorflow::Output input_max, float min_filter,
                                      float max_filter, const std::vector<int>& strides,
-                                     std::string padding) {
+                                     std::string& padding) {
 
     vector<Output> last_outputs = {input_, input_min, input_max};
     vector<Tensor> input_tensors;
@@ -129,11 +130,12 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
     if(padding == "SAME")
         padding_ = SAME;
 
-    const uint8 offset_input =
-            FloatToQuantizedUnclamped<quint8>(0.0f, min_input, max_input); //zero point
-    const uint8 offset_filter =
-            FloatToQuantizedUnclamped<quint8>(0.0f, min_filter, max_filter); //zero point
+    const int offset_input = FloatToQuantizedUnclamped<quint8>(0.0f, min_input, max_input); //zero point
+    const int offset_filter = FloatToQuantizedUnclamped<quint8>(0.0f, min_filter, max_filter); //zero point
 
+    const int32 offset_output = 0;
+    const int32 mult_output = 1;
+    const int32 shift_output = 0;
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = input.dim_size(3);

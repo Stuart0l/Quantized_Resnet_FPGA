@@ -21,10 +21,10 @@ using namespace tensorflow;
 const vector<int> block_size{3, 4, 6, 3};
 
 const vector<float> min_inputs = {
-#include "../weights/conv/min.txt"
+#include "../../weights/conv/min.txt"
 };
 const vector<float> max_inputs = {
-#include "../weights/conv/max.txt"
+#include "../../weights/conv/max.txt"
 };
 
 class all_weights_loader {

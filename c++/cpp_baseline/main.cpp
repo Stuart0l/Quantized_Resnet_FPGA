@@ -11,7 +11,7 @@ int main(){
     ClientSession session(root);
     std::vector<Tensor> outputs;
 
-    string path = "/home/stuart/桌面/resnet/weights/";
+    string path = "/home/luoxh/Desktop/resnet/weights/";
     TensorProto input;
     ReadBinaryProto(Env::Default(), path + "ILSVRC2012_val_00000001.pb", &input);
     Tensor input_image;

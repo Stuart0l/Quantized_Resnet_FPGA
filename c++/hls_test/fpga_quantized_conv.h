@@ -11,9 +11,10 @@
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/cc/client/client_session.h"
 #include <vector>
 #include <string>
-#include <tensorflow/cc/client/client_session.h>
+
 
 
 class FpgaQuantizedConv{
@@ -22,7 +23,7 @@ public:
                       ::tensorflow::Tensor filter, ::tensorflow::Output input_min,
                       ::tensorflow::Output input_max, float filter_min,
                       float filter_max, const std::vector<int>& strides,
-                       std::string padding);
+                       std::string& padding);
 
     ::tensorflow::Tensor output;
     float min_output;

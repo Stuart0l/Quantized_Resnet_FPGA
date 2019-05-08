@@ -30,8 +30,8 @@ public:
 
 class ConvPadding{
 public:
-    ConvPadding(const Scope &scope, Input input, Input filters,
-                Input min_input, Input max_input,
+    ConvPadding(const ClientSession& session, const Scope &scope, Input input, Tensor filters,
+                Output min_input, Output max_input,
                 float min_filter, float max_filter,
                 int kernel_size, int strides);
     Output output;
@@ -39,8 +39,8 @@ public:
 
 class BottleneckBlock{
 public:
-    BottleneckBlock(const Scope &scope, Input input, vector<Tensor> &filters,
-                    Input min_input, Input max_input,
+    BottleneckBlock(const ClientSession& session, const Scope &scope, Input input, vector<Tensor> &filters,
+                    Output min_input, Output max_input,
                     vector<float> &min_filter, vector<float> &max_filter,
                     vector<vector<Tensor>> &param,
                     bool projection_shortcut, int strides);
@@ -52,8 +52,8 @@ public:
 
 class BlockLayer{
 public:
-    BlockLayer(const Scope& scope, Input input, vector<vector<Tensor>> &filters,
-               Input min_input, Input max_input,
+    BlockLayer(const ClientSession& session, const Scope& scope, Input input, vector<vector<Tensor>> &filters,
+               Output min_input, Output max_input,
                vector<vector<float>> &min_filter, vector<vector<float>> &max_filter,
                vector<vector<vector<Tensor>>> &param,
                int blocks, int strides);
