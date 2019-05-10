@@ -4,111 +4,11 @@
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "fpga_quantized_conv.h"
-#include "fpga_conv_kernel.hpp"
+#include "fpga_conv_functor.h"
 #include <iostream>
+
 using namespace tensorflow;
 using namespace std;
-
-void ConvFunctor(const uint8* input_data, int input_batches, int input_height, int input_width, int input_depth,
-                 uint8 input_zero_point, const uint8* filter_data, int filter_height, int filter_width, int filter_count,
-                 uint8 filter_zero_point, int stride, Padding padding, qint32* output_data, int output_height,
-                 int output_width){
-
-    const auto highest = static_cast<int32>(Eigen::NumTraits<qint32>::highest());
-    const auto lowest = static_cast<int32>(Eigen::NumTraits<qint32>::lowest());
-
-    int filter_left_offset;
-    int filter_top_offset;
-    if (padding == VALID) {
-        filter_left_offset =
-                ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
-        filter_top_offset =
-                ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
-    } else {
-        filter_left_offset =
-                ((output_width - 1) * stride + filter_width - input_width) / 2;
-        filter_top_offset =
-                ((output_height - 1) * stride + filter_height - input_height) / 2;
-    }
-
-    // If we've got multiple images in our input, work through each of them.
-    for (int batch = 0; batch < input_batches; ++batch) {
-        // Walk through all the output image values, sliding the filter to
-        // different
-        // positions in the input.
-        for (int out_y = 0; out_y < output_height; ++out_y) {
-            for (int out_x = 0; out_x < output_width; ++out_x) {
-                // Each filter kernel produces one output channel.
-                for (int out_channel = 0; out_channel < filter_count; ++out_channel) {
-                    // We're going to calculate a single output value, which means we
-                    // need to multiply a three dimensional kernel of weights against
-                    // the current location within the input image.
-                    /*
-                      *-------------------------------...
-                      |\ ^
-                      | \in_depth
-                      |  \ v
-                      |   *-------------------------------...
-                      |   |            ^
-                      |   |       in_y_origin
-                      |   |            v   \
-                      |   |<in_x_origin>*---*^
-                      |   |            \|   |filter_height
-                      .   |             *---*v
-                      .   |             <--->
-                          .         filter_width
-                          .
-                    */
-                    const int in_x_origin = (out_x * stride) - filter_left_offset;
-                    const int in_y_origin = (out_y * stride) - filter_top_offset;
-                    int32 total = 0;
-                    int32 sum_input = 0, sum_filter = 0;
-                    int calc_count = 0;
-                    for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-                        for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-                            for (int in_channel = 0; in_channel < input_depth;
-                                 ++in_channel) {
-                                const int in_x = in_x_origin + filter_x;
-                                const int in_y = in_y_origin + filter_y;
-                                uint8 input_source_value;
-                                // If the location is outside the bounds of the input image,
-                                // use zero as a default value.
-                                const uint8 filter_source_value =
-                                        filter_data[(filter_y * filter_width * input_depth *
-                                                     filter_count) +
-                                                    (filter_x * input_depth * filter_count) +
-                                                    (in_channel * filter_count) + out_channel];
-                                if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                                    (in_y < input_height)) {
-                                    input_source_value =
-                                            input_data[(batch * input_height * input_width *
-                                                        input_depth) +
-                                                       (in_y * input_width * input_depth) +
-                                                       (in_x * input_depth) + in_channel];
-                                    ++calc_count;
-                                    sum_filter += filter_source_value;
-                                    total += (input_source_value * filter_source_value);
-                                    sum_input += input_source_value;
-                                }
-                            }
-                        }
-                    }
-
-                    const int32_t output = total - sum_input * filter_zero_point - sum_filter * input_zero_point +
-                                           input_zero_point * filter_zero_point * calc_count;
-                    // We need to saturate the results against the largest and smallest
-                    // values that can be represented in this type.
-                    const int32 top_clamped_output = std::min(output, highest);
-                    const int32 clamped_output = std::max(top_clamped_output, lowest);
-                    output_data[(batch * output_height * output_width * filter_count) +
-                                (out_y * output_width * filter_count) +
-                                (out_x * filter_count) + out_channel] = clamped_output;
-                }
-            }
-        }
-    }
-}
-
 
 FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, ::tensorflow::Output input_,
                                      ::tensorflow::Tensor filter, ::tensorflow::Output input_min,

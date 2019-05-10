@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(resnet)
+project(hls_test)
 enable_language(CXX)
 set(TF_SOURCE_DIR
         /home/luoxh/tensorflow)
@@ -18,8 +18,10 @@ set(TF_LIBS
         ${PROJECT_SOURCE_DIR}/../lib/libtensorflow_cc.so.1
         ${PROJECT_SOURCE_DIR}/../lib/libtensorflow_framework.so.1)
 set(CMAKE_CXX_FLAGS -std=c++11)
-add_executable(res_test
+add_executable(hls_test
         main.cpp resnet_model.h resnet_model.cpp
         all_weights_loader.h all_weights_loader.cpp
-        fpga_quantized_conv.cc fpga_quantized_conv.h)
-target_link_libraries(res_test ${TF_LIBS})
+        fpga_quantized_conv.cc fpga_quantized_conv.h
+        fpga_conv_functor.cpp fpga_conv_functor.h
+        kernel.cpp kernel.h)
+target_link_libraries(hls_test ${TF_LIBS})
