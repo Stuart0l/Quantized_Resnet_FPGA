@@ -39,7 +39,7 @@ ConvPadding::ConvPadding(const ClientSession &session, const Scope &scope, Input
     else
         padding = "VALID";
 
-    Tensor convout;
+    Output convout;
     float convmin;
     float convmax;
 
@@ -52,14 +52,14 @@ ConvPadding::ConvPadding(const ClientSession &session, const Scope &scope, Input
 
         auto Qconv = FpgaQuantizedConv(session, Cast(scope, quant.output, DT_UINT8), filters, quant.output_min,
                                        quant.output_max, min_filter, max_filter, {1, strides, strides, 1}, padding);
-        convout = Qconv.output;
+        convout = Cast(scope, Qconv.output, DT_QINT32);
         convmin = Qconv.min_output;
         convmax = Qconv.max_output;
 
     } else {
         auto Qconv = FpgaQuantizedConv(session, Cast(scope, input, DT_UINT8), filters, min_input, max_input,
                                        min_filter, max_filter, {1, strides, strides, 1}, padding);
-        convout = Qconv.output;
+        convout = Cast(scope, Qconv.output, DT_QINT32);
         convmin = Qconv.min_output;
         convmax = Qconv.max_output;
     }

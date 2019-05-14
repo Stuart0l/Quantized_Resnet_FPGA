@@ -74,12 +74,12 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]
-    Tensor new_tensor(DT_QINT32, out_shape);
+    Tensor new_tensor(DT_INT32, out_shape);
     output = std::move(new_tensor);
 
     ConvFunctor(input.flat<uint8>().data(), batch, input_rows, input_cols, in_depth, offset_input,
                 filter.flat<uint8>().data(), filter_rows, filter_cols, out_depth, offset_filter,
-                stride, padding_, output.flat<qint32>().data(), out_rows, out_cols);
+                stride, padding_, output.flat<int32>().data(), out_rows, out_cols);
 
     QuantizationRangeForMultiplication<quint8, quint8, qint32>(
             min_input, max_input, min_filter, max_filter, &min_output,
