@@ -269,5 +269,6 @@ def preprocess_image(filename):
 
     image.set_shape([224, 224, 3])
 
-    return tf.expand_dims(_mean_image_subtraction(image, _CHANNEL_MEANS, 3), 0)
+    # return tf.expand_dims(_mean_image_subtraction(image, _CHANNEL_MEANS, 3), 0)
+    return _mean_image_subtraction(image, _CHANNEL_MEANS, 3)
 
