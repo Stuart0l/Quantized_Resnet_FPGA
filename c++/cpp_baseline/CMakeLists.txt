@@ -15,5 +15,5 @@ set(TF_LIBS
         ${PROJECT_SOURCE_DIR}/../lib/libtensorflow_cc.so.1
         ${PROJECT_SOURCE_DIR}/../lib/libtensorflow_framework.so.1)
 set(CMAKE_CXX_FLAGS -std=c++11)
-add_executable(cpp_baseline main.cpp resnet_model.h resnet_model.cpp all_weights_loader.h all_weights_loader.cpp)
+add_executable(cpp_baseline main.cpp resnet_model.h resnet_model.cpp all_weights_loader.h all_weights_loader.cpp timer.h)
 target_link_libraries(cpp_baseline ${TF_LIBS})
