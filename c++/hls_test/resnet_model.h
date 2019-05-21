@@ -8,6 +8,7 @@
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "fpga_quantized_conv.h"
+#include "timer.h"
 #include <vector>
 
 using namespace tensorflow;
@@ -33,7 +34,7 @@ public:
     ConvPadding(const ClientSession& session, const Scope &scope, Input input, Tensor filters,
                 Output min_input, Output max_input,
                 float min_filter, float max_filter,
-                int kernel_size, int strides);
+                int kernel_size, int strides, Timer& timer);
     Output output;
 };
 
@@ -43,7 +44,7 @@ public:
                     Output min_input, Output max_input,
                     vector<float> &min_filter, vector<float> &max_filter,
                     vector<vector<Tensor>> &param,
-                    bool projection_shortcut, int strides);
+                    bool projection_shortcut, int strides, Timer& timer);
 
     Output output;
     Output output_min;
@@ -56,7 +57,7 @@ public:
                Output min_input, Output max_input,
                vector<vector<float>> &min_filter, vector<vector<float>> &max_filter,
                vector<vector<vector<Tensor>>> &param,
-               int blocks, int strides);
+               int blocks, int strides, Timer& timer);
 
     Output output;
     Output output_min;
@@ -67,5 +68,5 @@ Output resnet50(const ClientSession& session, const Scope &scope, const Input& i
                 vector<vector<vector<Tensor>>> &filters,
                 vector<vector<vector<float>>> &min_filter,
                 vector<vector<vector<float>>> &max_filter,
-                vector<vector<vector<vector<Tensor>>>> &param);
+                vector<vector<vector<vector<Tensor>>>> &param, Timer& timer);
 #endif //RESNET_RESNET_MODEL_H

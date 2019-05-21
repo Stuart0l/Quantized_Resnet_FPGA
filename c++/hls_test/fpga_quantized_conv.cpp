@@ -14,11 +14,12 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
                                      ::tensorflow::Tensor filter, ::tensorflow::Output input_min,
                                      ::tensorflow::Output input_max, float min_filter,
                                      float max_filter, const std::vector<int>& strides,
-                                     std::string& padding) {
+                                     std::string& padding, Timer& timer) {
 
     vector<Output> last_outputs = {input_, input_min, input_max};
     vector<Tensor> input_tensors;
     TF_CHECK_OK(session.Run(last_outputs, &input_tensors));
+    timer.stop();
     // [batch, in_height, in_width, channels]
     const Tensor &input = input_tensors[0];
     // [filter_height, filter_width, in_channels, out_channels]
@@ -79,9 +80,11 @@ FpgaQuantizedConv::FpgaQuantizedConv(const tensorflow::ClientSession& session, :
 
     ConvFunctor(input.flat<uint8>().data(), batch, input_rows, input_cols, in_depth, offset_input,
                 filter.flat<uint8>().data(), filter_rows, filter_cols, out_depth, offset_filter,
-                stride, padding_, output.flat<int32>().data(), out_rows, out_cols);
+                stride, padding_, output.flat<int32>().data(), out_rows, out_cols, timer);
 
     QuantizationRangeForMultiplication<quint8, quint8, qint32>(
             min_input, max_input, min_filter, max_filter, &min_output,
             &max_output);
+
+    timer.start();
 }

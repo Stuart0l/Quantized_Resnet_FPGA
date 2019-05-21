@@ -31,7 +31,7 @@ FixedPadding::FixedPadding(const Scope &scope, Input input, int kernel_size) {
 ConvPadding::ConvPadding(const ClientSession &session, const Scope &scope, Input input, Tensor filters,
                          Output min_input, Output max_input,
                          float min_filter, float max_filter,
-                         int kernel_size, int strides) {
+                         int kernel_size, int strides, Timer& timer) {
 
     string padding;
     if (strides == 1)
@@ -51,14 +51,14 @@ ConvPadding::ConvPadding(const ClientSession &session, const Scope &scope, Input
                          DT_QUINT8, QuantizeV2::Mode("MIN_FIRST"));
 
         auto Qconv = FpgaQuantizedConv(session, Cast(scope, quant.output, DT_UINT8), filters, quant.output_min,
-                                       quant.output_max, min_filter, max_filter, {1, strides, strides, 1}, padding);
+                                       quant.output_max, min_filter, max_filter, {1, strides, strides, 1}, padding, timer);
         convout = Cast(scope, Qconv.output, DT_QINT32);
         convmin = Qconv.min_output;
         convmax = Qconv.max_output;
 
     } else {
         auto Qconv = FpgaQuantizedConv(session, Cast(scope, input, DT_UINT8), filters, min_input, max_input,
-                                       min_filter, max_filter, {1, strides, strides, 1}, padding);
+                                       min_filter, max_filter, {1, strides, strides, 1}, padding, timer);
         convout = Cast(scope, Qconv.output, DT_QINT32);
         convmin = Qconv.min_output;
         convmax = Qconv.max_output;
@@ -74,18 +74,18 @@ BottleneckBlock::BottleneckBlock(const ClientSession &session, const Scope &scop
                                  Output min_input, Output max_input,
                                  vector<float> &min_filter, vector<float> &max_filter,
                                  vector<vector<Tensor>> &param,
-                                 bool projection_shortcut, int strides) {
+                                 bool projection_shortcut, int strides, Timer& timer) {
     Output shortcut;
 
     if (projection_shortcut) {
         ConvPadding shortcut_conv(session, scope, input, filters[3], min_input, max_input, min_filter[3], max_filter[3],
-                                  1, strides);
+                                  1, strides, timer);
         shortcut = BatchNorm(scope, shortcut_conv.output, param[3]).out;
     } else
         shortcut = Dequantize(scope, input, min_input, max_input, Dequantize::Mode("MIN_FIRST")).output;
 
     //Conv 1
-    ConvPadding Conv_1(session, scope, input, filters[0], min_input, max_input, min_filter[0], max_filter[0], 1, 1);
+    ConvPadding Conv_1(session, scope, input, filters[0], min_input, max_input, min_filter[0], max_filter[0], 1, 1, timer);
 
     BatchNorm Bn_1(scope, Conv_1.output, param[0]);
     Reshape Resp_1(scope, Bn_1.out, {-1});
@@ -96,7 +96,7 @@ BottleneckBlock::BottleneckBlock(const ClientSession &session, const Scope &scop
     //Conv 2
     ConvPadding Conv_2(session, scope, QRelu_1.activations, filters[1], QRelu_1.min_activations,
                        QRelu_1.max_activations,
-                       min_filter[1], max_filter[1], 3, strides);
+                       min_filter[1], max_filter[1], 3, strides, timer);
 
     BatchNorm Bn_2(scope, Conv_2.output, param[1]);
     Reshape Resp_2(scope, Bn_2.out, {-1});
@@ -107,7 +107,7 @@ BottleneckBlock::BottleneckBlock(const ClientSession &session, const Scope &scop
     //Conv 3
     ConvPadding Conv_3(session, scope, QRelu_2.activations, filters[2], QRelu_2.min_activations,
                        QRelu_2.max_activations,
-                       min_filter[2], max_filter[2], 1, 1);
+                       min_filter[2], max_filter[2], 1, 1, timer);
     BatchNorm Bn_3(scope, Conv_3.output, param[2]);
     Add add(scope, Bn_3.out, shortcut);
     Reshape Resp_3(scope, add.z, {-1});
@@ -124,12 +124,12 @@ BlockLayer::BlockLayer(const ClientSession &session, const Scope &scope, Input i
                        Output min_input, Output max_input,
                        vector<vector<float>> &min_filter, vector<vector<float>> &max_filter,
                        vector<vector<vector<Tensor>>> &param,
-                       int blocks, int strides) {
+                       int blocks, int strides, Timer& timer) {
 
     BottleneckBlock block_0(session, scope, input, filters[0], min_input, max_input, min_filter[0], max_filter[0],
                             param[0],
                             true,
-                            strides);
+                            strides, timer);
     Output block_output = block_0.output;
     Output block_output_min = block_0.output_min;
     Output block_output_max = block_0.output_max;
@@ -137,7 +137,7 @@ BlockLayer::BlockLayer(const ClientSession &session, const Scope &scope, Input i
 
     for (int i = 1; i < blocks; i++) {
         BottleneckBlock block_i(session, scope, block_output, filters[i], block_output_min, block_output_max,
-                                min_filter[i], max_filter[i], param[i], false, 1);
+                                min_filter[i], max_filter[i], param[i], false, 1, timer);
         block_output = block_i.output;
         block_output_min = block_i.output_min;
         block_output_max = block_i.output_max;
@@ -152,7 +152,7 @@ Output resnet50(const ClientSession &session, const Scope &scope, const Input &i
                 vector<vector<vector<Tensor>>> &filters,
                 vector<vector<vector<float>>> &min_filter,
                 vector<vector<vector<float>>> &max_filter,
-                vector<vector<vector<vector<Tensor>>>> &param) {
+                vector<vector<vector<vector<Tensor>>>> &param, Timer& timer) {
 
     FixedPadding init_pad(scope, input, 7);
     Reshape init_Resp(scope, init_pad.out, {-1});
@@ -180,7 +180,7 @@ Output resnet50(const ClientSession &session, const Scope &scope, const Input &i
 
     for (int i = 0; i < 4; i++) {
         BlockLayer layer_i(session, scope, layer_output, filters[i + 1], layer_output_min, layer_output_max,
-                           min_filter[i + 1], max_filter[i + 1], param[i + 1], block_size[i], block_strides[i]);
+                           min_filter[i + 1], max_filter[i + 1], param[i + 1], block_size[i], block_strides[i], timer);
         layer_output = layer_i.output;
 
         layer_output_min = layer_i.output_min;

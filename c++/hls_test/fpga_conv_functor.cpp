@@ -3,13 +3,17 @@
 //
 
 #include "fpga_conv_functor.h"
+#include <fstream>
+using namespace std;
+string path = "/home/luoxh/Desktop/resnet";
 
 void ConvFunctor(const uint8 *input_data, int input_batches, int input_height, int input_width, int input_depth,
                  uint8 input_zero_point, const uint8 *filter_data, int filter_height, int filter_width,
                  int filter_count,
                  uint8 filter_zero_point, int stride, tensorflow::Padding padding, int32 *output_data, int output_height,
-                 int output_width) {
+                 int output_width, Timer& timer) {
 
+    static int call = 0;
     int filter_left_offset;
     int filter_top_offset;
     if (padding == tensorflow::VALID) {
@@ -81,6 +85,32 @@ void ConvFunctor(const uint8 *input_data, int input_batches, int input_height, i
                 }
             }
         }*/
+        /*
+        ofstream input_writer, filter_writer, param_writer;
+        input_writer.open(path + "/weights/emu/input_" + to_string(call), ios::out|ios::binary);
+        filter_writer.open(path + "/weights/emu/filter_" + to_string(call), ios::out|ios::binary);
+        param_writer.open(path + "/weights/emu/param_" + to_string(call), ios::out|ios::binary);
+
+        if(input_writer.is_open())
+            input_writer.write((char*)per_input_data, sizeof(uint8)*input_size);
+        else
+            cout << "failed" << endl;
+
+        if(filter_writer.is_open())
+            filter_writer.write((char*)filter_data2, sizeof(uint8)*filter_size);
+        else
+            cout<< "failed\n";
+
+        if(param_writer.is_open())
+            param_writer.write((char*)kernel_param, sizeof(int)*13);
+        else
+            cout<<"failed\n";
+
+        input_writer.close();
+        filter_writer.close();
+        param_writer.close();
+         */
+
         kernel(per_input_data, filter_data2, per_output_data, kernel_param);
 
         memcpy(output_data + batch * output_size, per_output_data, output_size * sizeof(int32));
